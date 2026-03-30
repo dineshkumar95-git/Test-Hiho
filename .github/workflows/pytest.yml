@@ -12,51 +12,52 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # -------------------------
-      # 1️⃣ Checkout code
-      # -------------------------
+      # -------------------------------------------------
+      # 1️⃣ Checkout repository
+      # -------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # -------------------------
+      # -------------------------------------------------
       # 2️⃣ Setup Python
-      # -------------------------
-      - name: Setup Python
+      # -------------------------------------------------
+      - name: Set up Python 3.9
         uses: actions/setup-python@v5
         with:
           python-version: "3.9"
 
-      # -------------------------
+      # -------------------------------------------------
       # 3️⃣ Install dependencies
-      # -------------------------
+      # -------------------------------------------------
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-json-report requests
 
-      # -------------------------
+      # -------------------------------------------------
       # 4️⃣ Run pytest and generate JSON report
-      # -------------------------
+      # -------------------------------------------------
       - name: Run pytest
         run: |
           pytest \
             --json-report \
             --json-report-file=pytest_report.json
 
-      # -------------------------
+      # -------------------------------------------------
       # 5️⃣ Upload report as GitHub artifact
-      # -------------------------
+      # -------------------------------------------------
       - name: Upload pytest report artifact
         uses: actions/upload-artifact@v4
         with:
           name: pytest-results
           path: pytest_report.json
 
-      # -------------------------
+      # -------------------------------------------------
       # 6️⃣ Upload report to Databricks Workspace
-      # ✅ CORRECT API (workspace/import)
-      # -------------------------
-      - name: Upload pytest report to Databricks
+      #    ✅ Creates folder
+      #    ✅ Uploads file
+      # -------------------------------------------------
+      - name: Upload pytest report to Databricks Workspace
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
@@ -78,25 +79,53 @@ jobs:
               "Authorization": f"Bearer {token}"
           }
 
+          # -------------------------------------------------
+          # 1️⃣ Create folder /Shared/pytest (if not exists)
+          # -------------------------------------------------
+          mkdir_payload = {
+              "path": "/Shared/pytest"
+          }
+
+          mkdir_response = requests.post(
+              f"{host}/api/2.0/workspace/mkdirs",
+              headers=headers,
+              json=mkdir_payload
+          )
+
+          if mkdir_response.status_code not in (200, 400):
+              print("❌ Failed to create folder")
+              print(mkdir_response.text)
+              mkdir_response.raise_for_status()
+
+          print("✅ Folder /Shared/pytest is ready")
+
+          # -------------------------------------------------
+          # 2️⃣ Upload pytest report
+          # -------------------------------------------------
+          if not os.path.exists("pytest_report.json"):
+              print("❌ pytest_report.json not found")
+              sys.exit(1)
+
           with open("pytest_report.json", "rb") as f:
               content = base64.b64encode(f.read()).decode("utf-8")
 
-          payload = {
+          upload_payload = {
               "path": "/Shared/pytest/pytest_report.json",
               "overwrite": True,
               "format": "AUTO",
               "content": content
           }
 
-          response = requests.post(
+          upload_response = requests.post(
               f"{host}/api/2.0/workspace/import",
               headers=headers,
-              json=payload
+              json=upload_payload
           )
 
-          print("Status code:", response.status_code)
-          print("Response:", response.text)
+          print("Upload status:", upload_response.status_code)
+          print("Upload response:", upload_response.text)
 
-          response.raise_for_status()
+          upload_response.raise_for_status()
+
           print("✅ Pytest report uploaded successfully to Databricks Workspace")
           EOF
