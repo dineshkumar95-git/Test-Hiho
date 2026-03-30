@@ -12,120 +12,115 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # -------------------------------------------------
+      # -------------------------
       # 1️⃣ Checkout repository
-      # -------------------------------------------------
+      # -------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # -------------------------------------------------
+      # -------------------------
       # 2️⃣ Setup Python
-      # -------------------------------------------------
+      # -------------------------
       - name: Set up Python 3.9
         uses: actions/setup-python@v5
         with:
           python-version: "3.9"
 
-      # -------------------------------------------------
+      # -------------------------
       # 3️⃣ Install dependencies
-      # -------------------------------------------------
+      # -------------------------
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-json-report requests
 
-      # -------------------------------------------------
+      # -------------------------
       # 4️⃣ Run pytest and generate JSON report
-      # -------------------------------------------------
+      # -------------------------
       - name: Run pytest
         run: |
           pytest \
             --json-report \
             --json-report-file=pytest_report.json
 
-      # -------------------------------------------------
+      # -------------------------
       # 5️⃣ Upload report as GitHub artifact
-      # -------------------------------------------------
+      # -------------------------
       - name: Upload pytest report artifact
         uses: actions/upload-artifact@v4
         with:
           name: pytest-results
           path: pytest_report.json
 
-      # -------------------------------------------------
+      # -------------------------
       # 6️⃣ Upload report to Databricks Workspace
-      #    ✅ Creates folder
-      #    ✅ Uploads file
-      # -------------------------------------------------
+      #    ✅ Adds CI metadata
+      #    ✅ Creates folder if missing
+      #    ✅ Uploads JSON
+      # -------------------------
       - name: Upload pytest report to Databricks Workspace
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          GIT_SHA: ${{ github.sha }}
+          GIT_BRANCH: ${{ github.ref_name }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           python << 'EOF'
           import base64
           import requests
           import os
+          import json
           import sys
 
-          host = os.environ.get("DATABRICKS_HOST", "").rstrip("/")
-          token = os.environ.get("DATABRICKS_TOKEN", "")
-
-          if not host or not token:
-              print("❌ Missing Databricks secrets")
-              sys.exit(1)
+          host = os.environ["DATABRICKS_HOST"].rstrip("/")
+          token = os.environ["DATABRICKS_TOKEN"]
 
           headers = {
               "Authorization": f"Bearer {token}"
           }
 
-          # -------------------------------------------------
-          # 1️⃣ Create folder /Shared/pytest (if not exists)
-          # -------------------------------------------------
-          mkdir_payload = {
-              "path": "/Shared/pytest"
+          # -------------------------
+          # Add CI metadata to pytest report
+          # -------------------------
+          with open("pytest_report.json", "r") as f:
+              report = json.load(f)
+
+          report["ci_metadata"] = {
+              "commit_sha": os.environ.get("GIT_SHA"),
+              "branch": os.environ.get("GIT_BRANCH"),
+              "run_id": os.environ.get("RUN_ID")
           }
 
-          mkdir_response = requests.post(
+          with open("pytest_report.json", "w") as f:
+              json.dump(report, f)
+
+          # -------------------------
+          # Ensure workspace folder exists
+          # -------------------------
+          requests.post(
               f"{host}/api/2.0/workspace/mkdirs",
               headers=headers,
-              json=mkdir_payload
+              json={"path": "/Shared/pytest"}
           )
 
-          if mkdir_response.status_code not in (200, 400):
-              print("❌ Failed to create folder")
-              print(mkdir_response.text)
-              mkdir_response.raise_for_status()
-
-          print("✅ Folder /Shared/pytest is ready")
-
-          # -------------------------------------------------
-          # 2️⃣ Upload pytest report
-          # -------------------------------------------------
-          if not os.path.exists("pytest_report.json"):
-              print("❌ pytest_report.json not found")
-              sys.exit(1)
-
+          # -------------------------
+          # Upload pytest JSON to Databricks Workspace
+          # -------------------------
           with open("pytest_report.json", "rb") as f:
               content = base64.b64encode(f.read()).decode("utf-8")
 
-          upload_payload = {
-              "path": "/Shared/pytest/pytest_report.json",
-              "overwrite": True,
-              "format": "AUTO",
-              "content": content
-          }
-
-          upload_response = requests.post(
+          response = requests.post(
               f"{host}/api/2.0/workspace/import",
               headers=headers,
-              json=upload_payload
+              json={
+                  "path": "/Shared/pytest/pytest_report.json",
+                  "overwrite": True,
+                  "format": "AUTO",
+                  "content": content
+              }
           )
 
-          print("Upload status:", upload_response.status_code)
-          print("Upload response:", upload_response.text)
-
-          upload_response.raise_for_status()
-
-          print("✅ Pytest report uploaded successfully to Databricks Workspace")
+          response.raise_for_status()
+          print("✅ Pytest report uploaded to Databricks Workspace")
           EOF
