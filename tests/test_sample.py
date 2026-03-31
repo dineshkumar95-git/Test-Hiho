@@ -7,7 +7,9 @@ import pytest
 
 def test_addition_1():
     assert 1 + 1 == 2
-
+    
+def test_addition_0():
+    assert 1 + 1 == 2
 def test_addition_2():
     assert 5 + 10 == 15
 
