@@ -47,7 +47,11 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         run: |
           python << 'EOF'
-          import json, base64, requests, os
+          import json
+          import base64
+          import requests
+          import os
+          from datetime import datetime, timezone
 
           host = os.environ["DATABRICKS_HOST"].rstrip("/")
           token = os.environ["DATABRICKS_TOKEN"]
@@ -57,31 +61,39 @@ jobs:
           }
 
           # Load pytest report
-          with open("pytest_report.json") as f:
+          with open("pytest_report.json", "r") as f:
               report = json.load(f)
 
-          # Inject CI metadata
+          # Capture timestamps
+          utc_time = datetime.now(timezone.utc)
+          local_time = datetime.now()
+
+          # Inject CI metadata (✅ includes date & time)
           report["ci_metadata"] = {
               "commit_sha": os.environ["GIT_SHA"],
               "branch": os.environ["GIT_BRANCH"],
-              "run_id": os.environ["RUN_ID"]
+              "run_id": os.environ["RUN_ID"],
+              "run_timestamp_utc": utc_time.isoformat(),
+              "run_timestamp_local": local_time.isoformat(),
+              "timezone": "UTC"
           }
 
           # Save enriched report
           with open("pytest_report.json", "w") as f:
-              json.dump(report, f)
+              json.dump(report, f, indent=2)
 
-          # Ensure workspace directory exists
+          # Ensure Databricks workspace directory exists
           requests.post(
               f"{host}/api/2.0/workspace/mkdirs",
               headers=headers,
               json={"path": "/Shared/pytest"}
           )
 
-          # Upload report
+          # Encode file content
           with open("pytest_report.json", "rb") as f:
-              content = base64.b64encode(f.read()).decode()
+              content = base64.b64encode(f.read()).decode("utf-8")
 
+          # Upload report to Databricks Workspace
           response = requests.post(
               f"{host}/api/2.0/workspace/import",
               headers=headers,
@@ -108,7 +120,8 @@ jobs:
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         run: |
           python << 'EOF'
-          import os, requests
+          import os
+          import requests
 
           host = os.environ["DATABRICKS_HOST"].rstrip("/")
           token = os.environ["DATABRICKS_TOKEN"]
