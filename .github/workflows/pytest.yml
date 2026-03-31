@@ -12,53 +12,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # -------------------------
-      # 1️⃣ Checkout repository
-      # -------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # -------------------------
-      # 2️⃣ Setup Python
-      # -------------------------
-      - name: Set up Python 3.9
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.9"
 
-      # -------------------------
-      # 3️⃣ Install dependencies
-      # -------------------------
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-json-report requests
 
-      # -------------------------
-      # 4️⃣ Run pytest and generate JSON report
-      # -------------------------
       - name: Run pytest
         run: |
           pytest \
             --json-report \
             --json-report-file=pytest_report.json
 
-      # -------------------------
-      # 5️⃣ Upload report as GitHub artifact
-      # -------------------------
       - name: Upload pytest report artifact
         uses: actions/upload-artifact@v4
         with:
           name: pytest-results
           path: pytest_report.json
 
-      # -------------------------
-      # 6️⃣ Upload report to Databricks Workspace
-      #    ✅ Adds CI metadata
-      #    ✅ Creates folder if missing
-      
-      #    ✅ Uploads JSON
-      # -------------------------
       - name: Upload pytest report to Databricks Workspace
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
@@ -68,50 +46,35 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         run: |
           python << 'EOF'
-          import base64
-          import requests
-          import os
-          import json
-          import sys
+          import json, base64, requests, os
 
           host = os.environ["DATABRICKS_HOST"].rstrip("/")
           token = os.environ["DATABRICKS_TOKEN"]
 
-          headers = {
-              "Authorization": f"Bearer {token}"
-          }
+          headers = {"Authorization": f"Bearer {token}"}
 
-          # -------------------------
-          # Add CI metadata to pytest report
-          # -------------------------
-          with open("pytest_report.json", "r") as f:
+          with open("pytest_report.json") as f:
               report = json.load(f)
 
           report["ci_metadata"] = {
-              "commit_sha": os.environ.get("GIT_SHA"),
-              "branch": os.environ.get("GIT_BRANCH"),
-              "run_id": os.environ.get("RUN_ID")
+              "commit_sha": os.environ["GIT_SHA"],
+              "branch": os.environ["GIT_BRANCH"],
+              "run_id": os.environ["RUN_ID"]
           }
 
           with open("pytest_report.json", "w") as f:
               json.dump(report, f)
 
-          # -------------------------
-          # Ensure workspace folder exists
-          # -------------------------
           requests.post(
               f"{host}/api/2.0/workspace/mkdirs",
               headers=headers,
               json={"path": "/Shared/pytest"}
           )
 
-          # -------------------------
-          # Upload pytest JSON to Databricks Workspace
-          # -------------------------
           with open("pytest_report.json", "rb") as f:
-              content = base64.b64encode(f.read()).decode("utf-8")
+              content = base64.b64encode(f.read()).decode()
 
-          response = requests.post(
+          requests.post(
               f"{host}/api/2.0/workspace/import",
               headers=headers,
               json={
@@ -120,8 +83,30 @@ jobs:
                   "format": "AUTO",
                   "content": content
               }
-          )
+          ).raise_for_status()
 
-          response.raise_for_status()
-          print("✅ Pytest report uploaded to Databricks Workspace")
+          print("✅ Pytest report uploaded")
+          EOF
+
+      - name: Trigger Databricks ingestion job
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          python << 'EOF'
+          import os, requests
+
+          host = os.environ["DATABRICKS_HOST"].rstrip("/")
+          token = os.environ["DATABRICKS_TOKEN"]
+          job_id = 804179091689343   # ✅ HARD-CODED JOB ID
+
+          headers = {"Authorization": f"Bearer {token}"}
+
+          requests.post(
+              f"{host}/api/2.1/jobs/run-now",
+              headers=headers,
+              json={"job_id": job_id}
+          ).raise_for_status()
+
+          print("✅ Databricks job triggered")
           EOF
