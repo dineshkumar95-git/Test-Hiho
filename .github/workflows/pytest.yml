@@ -23,7 +23,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest pytest-json-report requests
 
-      - name: Run pytest (allow failures)
+      - name: Run pytest 
         run: |
           pytest \
             --json-report \
