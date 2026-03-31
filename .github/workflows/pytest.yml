@@ -94,7 +94,7 @@ jobs:
           )
 
           response.raise_for_status()
-          print("✅ Pytest report uploaded to Databricks Workspace")
+          print("Pytest report uploaded to Databricks Workspace")
           EOF
 
   trigger-databricks-job:
@@ -126,5 +126,5 @@ jobs:
           )
 
           response.raise_for_status()
-          print("✅ Databricks ingestion job triggered")
+          print("Databricks ingestion job triggered")
           EOF
