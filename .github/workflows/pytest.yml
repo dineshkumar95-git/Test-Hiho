@@ -1,4 +1,3 @@
-
 name: Pytest and Upload Report to Databricks
 
 on:
