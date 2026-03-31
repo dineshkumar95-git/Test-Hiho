@@ -3,8 +3,7 @@ name: Pytest and Upload Report to Databricks
 on:
   push:
     branches: [ main ]
-  #workflow_dispatch:
-
+  # workflow_dispatch:
 
 jobs:
   pytest:
@@ -19,34 +18,57 @@ jobs:
         with:
           python-version: "3.9"
 
+      # -------------------------------------------------
+      # Generate release metadata (date + short SHA)
+      # -------------------------------------------------
+      - name: Set release metadata
+        run: |
+          echo "RELEASE_DATE=$(date -u +%Y%m%d)" >> $GITHUB_ENV
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      # -------------------------------------------------
+      # Install dependencies
+      # -------------------------------------------------
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-json-report requests
 
-      - name: Run pytest 
+      # -------------------------------------------------
+      # Run pytest and generate JSON report
+      # -------------------------------------------------
+      - name: Run pytest
         run: |
           pytest \
             --json-report \
             --json-report-file=pytest_report.json
         continue-on-error: true
 
+      # -------------------------------------------------
+      # Upload pytest report as GitHub artifact
+      # -------------------------------------------------
       - name: Upload pytest report artifact
         uses: actions/upload-artifact@v4
         with:
           name: pytest-results
           path: pytest_report.json
 
+      # -------------------------------------------------
+      # Upload enriched pytest report to Databricks Workspace
+      # -------------------------------------------------
       - name: Upload pytest report to Databricks Workspace
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
           GIT_SHA: ${{ github.sha }}
           GIT_BRANCH: ${{ github.ref_name }}
-          RUN_ID: ${{ github.run_id }}
+          RELEASE_NAME: ${{ github.ref_name }}-${{ env.RELEASE_DATE }}-${{ env.SHORT_SHA }}
         run: |
           python << 'EOF'
-          import json, base64, requests, os
+          import json
+          import base64
+          import requests
+          import os
 
           host = os.environ["DATABRICKS_HOST"].rstrip("/")
           token = os.environ["DATABRICKS_TOKEN"]
@@ -61,14 +83,14 @@ jobs:
 
           # Inject CI metadata
           report["ci_metadata"] = {
+              "release_name": os.environ["RELEASE_NAME"],
               "commit_sha": os.environ["GIT_SHA"],
-              "branch": os.environ["GIT_BRANCH"],
-              "run_id": os.environ["RUN_ID"]
+              "branch": os.environ["GIT_BRANCH"]
           }
 
           # Save enriched report
           with open("pytest_report.json", "w") as f:
-              json.dump(report, f)
+              json.dump(report, f, indent=2)
 
           # Ensure Databricks workspace directory exists
           requests.post(
@@ -93,10 +115,12 @@ jobs:
           )
 
           response.raise_for_status()
-          print("Pytest report uploaded to Databricks Workspace")
+          print("✅ Pytest report uploaded to Databricks Workspace")
           EOF
 
-
+  # -------------------------------------------------
+  # Trigger Databricks ingestion job
+  # -------------------------------------------------
   trigger-databricks-job:
     needs: pytest
     runs-on: ubuntu-latest
@@ -109,7 +133,8 @@ jobs:
           TESTS_JOB_ID: ${{ secrets.TESTS_JOB_ID }}
         run: |
           python << 'EOF'
-          import os, requests
+          import os
+          import requests
 
           host = os.environ["DATABRICKS_HOST"].rstrip("/")
           token = os.environ["DATABRICKS_TOKEN"]
@@ -126,5 +151,5 @@ jobs:
           )
 
           response.raise_for_status()
-          print("Databricks ingestion job triggered")
+          print("✅ Databricks ingestion job triggered")
           EOF
