@@ -125,32 +125,4 @@ jobs:
           response.raise_for_status()
           print(" Databricks ingestion job triggered")
           EOF
-  trigger-databricks-visualization-job:
-    needs: trigger-databricks-job
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger Databricks databricks visualization job
-        env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-        run: |
-          python << 'EOF'
-          import os, requests
-
-          host = os.environ["DATABRICKS_HOST"].rstrip("/")
-          token = os.environ["DATABRICKS_TOKEN"]
-          job_id = 761820873851502  
-
-          headers = {
-              "Authorization": f"Bearer {token}"
-          }
-
-          response = requests.post(
-              f"{host}/api/2.1/jobs/run-now",
-              headers=headers,
-              json={"job_id": job_id}
-          )
-
-          response.raise_for_status()
-          print("Databricks visualization job triggered")
-          EOF
+  
