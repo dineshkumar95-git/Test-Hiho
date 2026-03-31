@@ -7,6 +7,7 @@ on:
 jobs:
   pytest:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -67,14 +68,14 @@ jobs:
           with open("pytest_report.json", "w") as f:
               json.dump(report, f)
 
-          # Ensure workspace directory exists
+          # Ensure Databricks workspace directory exists
           requests.post(
               f"{host}/api/2.0/workspace/mkdirs",
               headers=headers,
               json={"path": "/Shared/pytest"}
           )
 
-          # Upload report
+          # Upload report to Databricks Workspace
           with open("pytest_report.json", "rb") as f:
               content = base64.b64encode(f.read()).decode()
 
@@ -90,24 +91,26 @@ jobs:
           )
 
           response.raise_for_status()
-          print("Pytest report uploaded to Databricks Workspace")
+          print("✅ Pytest report uploaded to Databricks Workspace")
           EOF
 
   trigger-databricks-job:
     needs: pytest
     runs-on: ubuntu-latest
+
     steps:
       - name: Trigger Databricks ingestion job
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          TESTS_JOB_ID: ${{ secrets.TESTS_JOB_ID }}
         run: |
           python << 'EOF'
           import os, requests
 
           host = os.environ["DATABRICKS_HOST"].rstrip("/")
           token = os.environ["DATABRICKS_TOKEN"]
-          job_id = ${{ secrets.TESTS_JOB_ID }}  
+          job_id = int(os.environ["TESTS_JOB_ID"])
 
           headers = {
               "Authorization": f"Bearer {token}"
@@ -120,6 +123,5 @@ jobs:
           )
 
           response.raise_for_status()
-          print(" Databricks ingestion job triggered")
+          print("✅ Databricks ingestion job triggered")
           EOF
-  
