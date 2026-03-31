@@ -7,9 +7,8 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-
 jobs:
-  test-and-upload:
+  pytest:
     runs-on: ubuntu-latest
 
     steps:
@@ -26,13 +25,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest pytest-json-report requests
 
-      - name: Run pytest
+      - name: Run pytest (allow failures)
         run: |
           pytest \
             --json-report \
             --json-report-file=pytest_report.json
         continue-on-error: true
-
 
       - name: Upload pytest report artifact
         uses: actions/upload-artifact@v4
@@ -54,30 +52,37 @@ jobs:
           host = os.environ["DATABRICKS_HOST"].rstrip("/")
           token = os.environ["DATABRICKS_TOKEN"]
 
-          headers = {"Authorization": f"Bearer {token}"}
+          headers = {
+              "Authorization": f"Bearer {token}"
+          }
 
+          # Load pytest report
           with open("pytest_report.json") as f:
               report = json.load(f)
 
+          # Inject CI metadata
           report["ci_metadata"] = {
               "commit_sha": os.environ["GIT_SHA"],
               "branch": os.environ["GIT_BRANCH"],
               "run_id": os.environ["RUN_ID"]
           }
 
+          # Save enriched report
           with open("pytest_report.json", "w") as f:
               json.dump(report, f)
 
+          # Ensure workspace directory exists
           requests.post(
               f"{host}/api/2.0/workspace/mkdirs",
               headers=headers,
               json={"path": "/Shared/pytest"}
           )
 
+          # Upload report
           with open("pytest_report.json", "rb") as f:
               content = base64.b64encode(f.read()).decode()
 
-          requests.post(
+          response = requests.post(
               f"{host}/api/2.0/workspace/import",
               headers=headers,
               json={
@@ -86,11 +91,17 @@ jobs:
                   "format": "AUTO",
                   "content": content
               }
-          ).raise_for_status()
+          )
 
-          print("✅ Pytest report uploaded")
+          response.raise_for_status()
+          print("✅ Pytest report uploaded to Databricks Workspace")
           EOF
 
+  trigger-databricks-job:
+    needs: pytest
+    runs-on: ubuntu-latest
+
+    steps:
       - name: Trigger Databricks ingestion job
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
@@ -101,15 +112,19 @@ jobs:
 
           host = os.environ["DATABRICKS_HOST"].rstrip("/")
           token = os.environ["DATABRICKS_TOKEN"]
-          job_id = 804179091689343   # ✅ HARD-CODED JOB ID
 
-          headers = {"Authorization": f"Bearer {token}"}
+          job_id = 761820873851502  # ✅ HARD-CODED JOB ID
 
-          requests.post(
+          headers = {
+              "Authorization": f"Bearer {token}"
+          }
+
+          response = requests.post(
               f"{host}/api/2.1/jobs/run-now",
               headers=headers,
               json={"job_id": job_id}
-          ).raise_for_status()
+          )
 
-          print("✅ Databricks job triggered")
+          response.raise_for_status()
+          print("✅ Databricks visualization job triggered")
           EOF
