@@ -97,6 +97,7 @@ jobs:
           print("Pytest report uploaded to Databricks Workspace")
           EOF
 
+
   trigger-databricks-job:
     needs: pytest
     runs-on: ubuntu-latest
