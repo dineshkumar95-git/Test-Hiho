@@ -1,9 +1,9 @@
 name: Pytest and Upload Report to Databricks
 
 on:
-  pull_request:
+  push:
     branches: [ main ]
-  workflow_dispatch:
+  #workflow_dispatch:
 
 jobs:
   pytest:
