@@ -138,7 +138,7 @@ jobs:
 
           host = os.environ["DATABRICKS_HOST"].rstrip("/")
           token = os.environ["DATABRICKS_TOKEN"]
-          job_id = int(os.environ["TESTS_JOB_ID"])
+          job_id = 971731078580378 #int(os.environ["TESTS_JOB_ID"])
 
           headers = {
               "Authorization": f"Bearer {token}"
