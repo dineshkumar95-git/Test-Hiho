@@ -80,7 +80,7 @@ jobs:
           GIT_SHA: ${{ github.sha }}
           GIT_BRANCH: ${{ github.ref_name }}
           RELEASE_NAME: >-
-            ${{ env.ENVIRONMENT }}-${{ github.ref_name }} #-${{ env.RELEASE_DATE }}-${{ env.SHORT_SHA }}
+            ${{ env.ENVIRONMENT }}-${{ github.ref_name }}-${{ env.RELEASE_DATE }}-${{ env.SHORT_SHA }}
         run: |
           python << 'EOF'
           import json, base64, requests, os
