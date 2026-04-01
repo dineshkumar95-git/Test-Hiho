@@ -23,8 +23,9 @@ jobs:
       # -------------------------------------------------
       - name: Set release metadata
         run: |
-          echo "RELEASE_DATE=$(date -u +%Y%m%d)" >> $GITHUB_ENV
-          echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+          github.ref == 'refs/heads/develop' && 'dev' ||
+          startsWith(github.ref, 'refs/heads/release/') && 'tst' ||
+          github.ref == 'refs/heads/main' && 'prd'
 
       # -------------------------------------------------
       # Install dependencies
